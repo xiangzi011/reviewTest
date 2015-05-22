@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "key": {
+        "uuid": "facab960_ce76a0d8",
+        "filename": "reviewTest.txt",
+        "patchSetId": 1
+      },
+      "lineNbr": 1115,
+      "author": {
+        "id": 1005090
+      },
+      "writtenOn": "2015-05-22T05:24:12Z",
+      "side": 1,
+      "message": "Kevin add some comments for test",
+      "range": {
+        "startLine": 1115,
+        "startChar": 7,
+        "endLine": 1115,
+        "endChar": 28
+      },
+      "revId": "6f37976a74c56de9a9f2047db5fd463840388758",
+      "serverId": "d5d70762-12d0-45a1-890d-524b12d3f735",
+      "unresolved": false
+    }
+  ]
+}
