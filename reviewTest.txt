@@ -1,0 +1,2564 @@
+/*******************************************************************************
+* THIS SOFTWARE AND RELATED DOCUMENTATION ARE PROPRIETARY
+* TO SITA Information Networking Computing N.V.
+* Copyright SITA Information Networking Computing N.V. 2005-2013. Confidential
+* ALL RIGHTS RESERVED.
+*******************************************************************************/
+
+#include "CEdsGesr.h"
+#include "CSitaNativeResponse.h"
+#include "CStringUtils.h"
+#include "COptionalServiceItems.h"
+#include "OptionalServiceFeesSort.h"
+
+using namespace std;
+
+COptionalServiceItems::COptionalServiceItems()
+{
+    Init();
+}
+
+
+COptionalServiceItems::COptionalServiceItems(
+__ns1__DLXAncillaryAirItemPriceSvResponse* response)
+{
+    Init();
+    Process(response);
+}
+
+
+COptionalServiceItems::COptionalServiceItems(
+tas1__TSKOptionalServiceResponse* response)
+{
+    Init();
+    Process(response);
+}
+
+COptionalServiceItems::COptionalServiceItems(
+tasCommission1__TSKCommissionResponse* response)
+{
+    Init();
+    Process(response);
+}
+
+
+COptionalServiceItems::COptionalServiceItems(
+CEdsEapiItineraryPricingResponse* response,
+int fareOfferNumber)
+{
+    Init();
+    Process(response, fareOfferNumber);
+}
+
+
+COptionalServiceItems::~COptionalServiceItems()
+{
+}
+
+
+void COptionalServiceItems::Init()
+{
+    ClearItems();
+
+    BaggageCollected(false);
+    ManualBaggageCollected(false);
+    OsfCollected(false);
+    TktCollected(false);
+    DisplayFeeApplication(false);
+    DisplayNoteText(false);
+    DisplayTableNumber(true);
+    DisplayConvertedInfo(false);
+    DisplayNoForZeroPC(false);
+    DisplayMetric(true);
+    DisplayRate(false);
+    AddAmountToBaggagePiece(false);
+    TicketingFormat(false);
+    FeeAmountTruncated(false);
+    JourneyType(OSF_JOURNEY_TYPE_UNKNOWN);
+}
+
+
+COptionalServiceItems::OsfJourneyType COptionalServiceItems::JourneyType(
+string jt)
+{
+    if (jt == "STANDARD")
+        return OSF_JOURNEY_TYPE_STANDARD;
+    else if (jt == "US_DOT")
+        return OSF_JOURNEY_TYPE_US_DOT;
+    else if (jt == "US_DOMESTIC")
+        return OSF_JOURNEY_TYPE_US_DOMESTIC;
+    else if (jt == "RES302")
+        return OSF_JOURNEY_TYPE_RES302;
+    else if ((jt == "CA_DOT") || (jt == "CA_CTA"))
+        return OSF_JOURNEY_TYPE_CA_DOT;
+    else if (jt == "CA_DOMESTIC")
+        return OSF_JOURNEY_TYPE_CA_DOMESTIC;
+    else if ((jt == "USCA_DOT") || (jt == "US_DOT_AND_CA_CTA"))
+        return OSF_JOURNEY_TYPE_USCA_DOT;
+    else
+        return OSF_JOURNEY_TYPE_UNKNOWN;
+}
+
+
+string COptionalServiceItems::JourneyTypeText(
+COptionalServiceItems::OsfJourneyType jt)
+{
+    if (jt == OSF_JOURNEY_TYPE_STANDARD)
+        return "STANDARD";
+    else if (jt == OSF_JOURNEY_TYPE_US_DOT)
+        return "US DOT";
+    else if (jt == OSF_JOURNEY_TYPE_US_DOMESTIC)
+        return "US DOMESTIC";
+    else if (jt == OSF_JOURNEY_TYPE_RES302)
+        return "RESO302";
+    else if (jt == OSF_JOURNEY_TYPE_CA_DOT)
+        return "CA DOT";
+    else if (jt == OSF_JOURNEY_TYPE_CA_DOMESTIC)
+        return "CA DOMESTIC";
+    else if (jt == OSF_JOURNEY_TYPE_USCA_DOT)
+        return "USCA DOT";
+    else
+        return "UNKNOWN";
+}
+
+
+void COptionalServiceItems::JourneyType(
+__ns1__DLXAncillaryAirItemPriceSvResponse* response)
+{
+    if (COptionalServiceItems::NumberOfOptions(response) > 0)
+    {
+        if (response->
+            ns2__DLXAncillaryAirItemPriceSvResponse->
+            union_DLXAncillaryAirItemPriceSvResponse.
+            ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+            union_DLX_USCOREAncillaryAirItemPriceSvRS.
+            DLX_USCOREAncillaryAirItemPriceRS->JourneyType != NULL)
+        {
+            JourneyType(
+                COptionalServiceItems::JourneyType(response->
+                ns2__DLXAncillaryAirItemPriceSvResponse->
+                union_DLXAncillaryAirItemPriceSvResponse.
+                ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+                union_DLX_USCOREAncillaryAirItemPriceSvRS.
+                DLX_USCOREAncillaryAirItemPriceRS->JourneyType));
+        }
+    }
+}
+
+
+void COptionalServiceItems::JourneyType(
+tas1__TSKOptionalServiceResponse* response)
+{
+    if (COptionalServiceItems::NumberOfOptions(response) > 0)
+    {
+        if (response->response->JourneyType != NULL)
+        {
+            JourneyType(COptionalServiceItems::JourneyType(response->response->JourneyType));
+        }
+    }
+}
+
+
+int COptionalServiceItems::NumberOfItems()
+{
+    return Items()->size();
+}
+
+
+void COptionalServiceItems::ClearItems()
+{
+    Items()->clear();
+}
+
+
+void COptionalServiceItems::Process(
+CEdsEapiItineraryPricingResponse* response,
+int fareOfferNumber)
+{
+    list<CEdsGesr> gesrList(response->GetGesrListForFareOffer(false, fareOfferNumber));
+
+    list<CEdsGesr>::iterator gesrIter;
+    for (gesrIter = gesrList.begin();
+        gesrIter != gesrList.end();
+        gesrIter++)
+    {
+        COptionalServiceItem item(&(*gesrIter));
+        AddItem(&item);
+    }
+}
+
+
+void COptionalServiceItems::Process(
+__ns1__DLXAncillaryAirItemPriceSvResponse* response)
+{
+    JourneyType(response);
+    DepartureArrivalCities(response);
+
+    for (int optionNumber = 0;
+        optionNumber < COptionalServiceItems::NumberOfOptions(response);
+        optionNumber++)
+    {
+        COptionalServiceItem item(
+				  response->
+				  ns2__DLXAncillaryAirItemPriceSvResponse->
+				  union_DLXAncillaryAirItemPriceSvResponse.
+				  ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+				  union_DLX_USCOREAncillaryAirItemPriceSvRS.
+				  DLX_USCOREAncillaryAirItemPriceRS->RequestCriteria,
+				  response->
+				  ns2__DLXAncillaryAirItemPriceSvResponse->
+				  union_DLXAncillaryAirItemPriceSvResponse.
+				  ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+				  union_DLX_USCOREAncillaryAirItemPriceSvRS.
+				  DLX_USCOREAncillaryAirItemPriceRS->
+				  ns5__AncillaryAirComponentPricedOptions[optionNumber]);
+
+// Only store:
+// 1. Ticketing fees
+// 2. Baggage fees
+// 3. Any other service application = FLIGHT or TICKET
+        if ((item.ServiceInformation()->ProductGroup() ==
+            COsfServiceInformation::OSF_PRODUCT_GROUP_TKT_MANDATORY_FEES)
+            ||
+            (item.ServiceInformation()->ProductGroup() ==
+            COsfServiceInformation::OSF_PRODUCT_GROUP_TKT_OPTIONAL_FEES)
+            ||
+            (item.ServiceInformation()->ProductGroup() ==
+            COsfServiceInformation::OSF_PRODUCT_GROUP_BAGGAGE)
+            ||
+            ((item.ServiceInformation()->ServiceApplication() ==
+            COsfServiceInformation::OSF_SERVICE_APPL_FLIGHT))
+            ||
+            ((item.ServiceInformation()->ServiceApplication() ==
+            COsfServiceInformation::OSF_SERVICE_APPL_TICKET)))
+        {
+            AddTDPItem(&item);
+        }
+    }
+}
+
+
+void COptionalServiceItems::AddTDPItem(
+COptionalServiceItem* item)
+{
+// Add the text for each table returned for each provision
+    COptionalServiceItem::ProvisionInfoList::iterator piIter(item->ProvisionInformation()->begin());
+    for (piIter = item->ProvisionInformation()->begin();
+        piIter != item->ProvisionInformation()->end();
+        piIter++)
+    {
+        COptionalServiceItem newItem(*item);
+        newItem.ClearProvisionInformation();
+        newItem.ProvisionInformation(*piIter);
+
+// Only store the Fee associated with this provision
+	if ((item->Fees() != NULL) &&  (item->Fees()->Fees() != NULL) &&
+	    (item->Fees()->Fees()->size() > 1))
+	  {
+	    if (item->Fees() != NULL)
+	      {
+		COsfFees::FeesList::iterator feeIter;
+		
+		for (feeIter = item->Fees()->Fees()->begin();
+		     feeIter != item->Fees()->Fees()->end();
+		     feeIter++)
+		  {
+		    
+		    if ((*piIter).FeeAmount() == (*feeIter).Amount())
+		      {
+			// We have found the maching fee
+			newItem.ClearFees();
+
+			COsfFees myFees;
+			myFees.AddFee((*feeIter));
+			
+			newItem.Fees(myFees);
+
+			break;
+		      }
+		  }
+	      }
+	  }
+	
+// Seat Assignment with multiple UpgradeToRBDs are treated as separate items
+        if ((item->ServiceInformation()->ProductGroup() ==
+            COsfServiceInformation::OSF_PRODUCT_GROUP_PRE_RESERVED_SEAT_ASSIGNMENT)
+            &&
+            ((*piIter).NumberOfRBDUpgrades() > 0))
+        {
+            COptionalServiceItem::ProvisionInfoList::iterator newpiIter(newItem.ProvisionInformation()->begin());
+            COsfProvisionInformation::RBDUpgradeList::iterator rbdIter;
+            for (rbdIter = (*piIter).RBDUpgrades()->begin();
+                rbdIter != (*piIter).RBDUpgrades()->end();
+                rbdIter++)
+            {
+                (*newpiIter).ClearRBDUpgrades();
+                (*newpiIter).AddRBDUpgrade(*rbdIter);
+
+                COsfApplyPricedOptionTo::SegmentSet::iterator segIter;
+                for (segIter = item->ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin();
+                    segIter != item->ApplyPricedOptionTo()->ItinerarySegmentRPH()->end();
+                    segIter++)
+                {
+                    newItem.ApplyPricedOptionTo()->ClearItinerarySegmentRPH();
+                    newItem.ApplyPricedOptionTo()->AddSegment(*segIter);
+                    newItem.ApplyPricedOptionTo()->CheckInOrigin(DepartureCity(*segIter));
+                    newItem.ApplyPricedOptionTo()->CheckInDestination(ArrivalCity(*segIter));
+
+                    AddItem(&newItem);
+                }
+            }
+        }
+        else
+        {
+            newItem.ApplyPricedOptionTo()->CheckInOrigin(DepartureCity(item->ApplyPricedOptionTo()->FirstSegment()));
+            newItem.ApplyPricedOptionTo()->CheckInDestination(ArrivalCity(item->ApplyPricedOptionTo()->LastSegment()));
+
+            AddItem(&newItem);
+        }
+    }
+}
+
+
+void COptionalServiceItems::Process(
+tas1__TSKOptionalServiceResponse* response)
+{
+    JourneyType(response);
+    DepartureArrivalCities(response);
+
+    for (int psIndex = 0;
+        psIndex < response->response->__sizePricingSolution;
+        psIndex++)
+    {
+        CBaggagePricingSolution ps(response->response->PricingSolution[psIndex]);
+        AddSolution(ps);
+    }
+
+    for (int optionNumber = 0;
+        optionNumber < COptionalServiceItems::NumberOfOptions(response);
+        optionNumber++)
+    {
+        COptionalServiceItem item(response->response->AncillaryAirComponentPricedOptions[optionNumber]);
+        AddTDPItem(&item);
+    }
+}
+
+void COptionalServiceItems::Process(
+tasCommission1__TSKCommissionResponse* response)
+{
+  if (response != NULL)
+    {
+      if (response->response != NULL)
+	{
+	  if (response->response->__sizePricedItineraryResult > 0)
+	    {
+	      CCommissionInfoResult cir(response->response->PricedItineraryResult[0]->CommissionInfoResult);
+	      
+	      commission = cir;
+	    }
+	}
+    }
+}
+
+//added by cycui at 20150113
+void COptionalServiceItems::Process(
+RULETRA__RULERuleTranslateRTRS* response)
+{
+  if (response != NULL)
+    {
+      if (response->response_ != NULL)
+    {
+      if (response->response_->RTRS != NULL)
+      {
+          
+          std::cout<<"enter into  COptionalServiceItems::Process and begin to store gsoap response into CChineseRuleInfoResult"<<std::endl;
+
+          CChineseRuleInfoResult cir(response->response_->RTRS);
+ 
+          chineserule= cir;
+
+  
+          std::cout<<"store the gsoap resonse into CChineseRuleInfoResult class successfully!"<<std::endl;
+      }
+    }
+    }
+}
+
+int COptionalServiceItems::NumberOfOptions(
+__ns1__DLXAncillaryAirItemPriceSvResponse* response)
+{
+    int numberOfOptions=0;
+
+    if (response != NULL)
+    {
+        if (response->ns2__DLXAncillaryAirItemPriceSvResponse != NULL)
+        {
+            if (response->
+                ns2__DLXAncillaryAirItemPriceSvResponse->
+                __union_DLXAncillaryAirItemPriceSvResponse ==
+                SOAP_UNION__ns2__union_DLXAncillaryAirItemPriceSvResponse_ns31__DLX_USCOREAncillaryAirItemPriceSvRS)
+            {
+                if (response->ns2__DLXAncillaryAirItemPriceSvResponse->
+                    union_DLXAncillaryAirItemPriceSvResponse.
+                    ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+                    __union_DLX_USCOREAncillaryAirItemPriceSvRS ==
+                    SOAP_UNION__ns31__union_DLX_USCOREAncillaryAirItemPriceSvRS_DLX_USCOREAncillaryAirItemPriceRS)
+                {
+                    if (response->ns2__DLXAncillaryAirItemPriceSvResponse->
+                        union_DLXAncillaryAirItemPriceSvResponse.
+                        ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+                        union_DLX_USCOREAncillaryAirItemPriceSvRS.
+                        DLX_USCOREAncillaryAirItemPriceRS != NULL)
+                    {
+                        numberOfOptions = response->ns2__DLXAncillaryAirItemPriceSvResponse->
+                            union_DLXAncillaryAirItemPriceSvResponse.
+                            ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+                            union_DLX_USCOREAncillaryAirItemPriceSvRS.
+                            DLX_USCOREAncillaryAirItemPriceRS->
+                            __sizeAncillaryAirComponentPricedOptions;
+                    }
+                }
+            }
+        }
+    }
+
+    return numberOfOptions;
+}
+
+
+COptionalServiceItem* COptionalServiceItems::Item(
+int indexNumber)
+{
+    COptionalServiceItem* it(NULL);
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if ((*osIter).Index() == indexNumber)
+            {
+                it = &(*osIter);
+            }
+        }
+    }
+
+    return it;
+}
+
+
+int COptionalServiceItems::NumberOfOptions(
+tas1__TSKOptionalServiceResponse* response)
+{
+    if (response != NULL)
+    {
+        if (response->response != NULL)
+        {
+            return (response->response->__sizeAncillaryAirComponentPricedOptions);
+        }
+    }
+
+    return 0;
+}
+
+
+void COptionalServiceItems::AddItem(
+COptionalServiceItem* item)
+{
+    Items()->push_back(*item);
+}
+
+
+void COptionalServiceItems::AddItems(
+OsfItems* items)
+{
+    OsfItems::iterator osIter;
+    for (osIter = items->begin();
+        osIter != items->end();
+        ++osIter)
+    {
+        AddItem(&(*osIter));
+    }
+}
+
+
+void COptionalServiceItems::RemoveItems(
+COsfServiceInformation::OsfProductGroup productGroup)
+{
+    OsfItems remainingItems;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            ++osIter)
+        {
+            if ((*osIter).ServiceInformation()->ProductGroup() != productGroup)
+            {
+                remainingItems.push_back(*osIter);
+            }
+        }
+    }
+
+    Update(&remainingItems);
+}
+
+
+int COptionalServiceItems::NumberOfItems(
+string productGroup)
+{
+    return NumberOfItems(COsfServiceInformation::ProductGroup(productGroup));
+}
+
+
+int COptionalServiceItems::NumberOfItems(
+COsfServiceInformation::OsfProductGroup productGroup)
+{
+    int numberOfItems=0;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if ((*osIter).ServiceInformation()->ProductGroup() == productGroup)
+            {
+                numberOfItems++;
+            }
+        }
+    }
+
+    return numberOfItems;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::Items(
+COsfServiceInformation::OsfProductGroup productGroup)
+{
+    OsfItems itemsToReturn;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if ((*osIter).ServiceInformation()->ProductGroup() == productGroup)
+            {
+                itemsToReturn.push_back(*osIter);
+            }
+        }
+    }
+
+    return itemsToReturn;
+}
+
+
+int COptionalServiceItems::NumberOfItems(
+COsfServiceInformation::OsfProductGroup productGroup,
+COsfServiceInformation::OsfProductSubGroup productSubGroup)
+{
+    int numberOfItems=0;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if (((*osIter).ServiceInformation()->ProductGroup() == productGroup) &&
+                ((*osIter).ServiceInformation()->ProductSubGroup() == productSubGroup))
+            {
+                numberOfItems++;
+            }
+        }
+    }
+
+    return numberOfItems;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::Items(
+COsfServiceInformation::OsfProductGroup productGroup,
+COsfServiceInformation::OsfProductSubGroup productSubGroup)
+{
+    OsfItems itemsToReturn;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if (((*osIter).ServiceInformation()->ProductGroup() == productGroup) &&
+                ((*osIter).ServiceInformation()->ProductSubGroup() == productSubGroup))
+            {
+                itemsToReturn.push_back(*osIter);
+            }
+        }
+    }
+
+    return itemsToReturn;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::Items(
+COsfServiceInformation::OsfProductGroup productGroup,
+COsfServiceInformation::OsfProductSubGroup productSubGroup,
+COsfServiceInformation::OsfServiceApplication svcAppl)
+{
+    OsfItems itemsToReturn;
+
+    OsfItems::iterator osIter;
+    for (osIter = Items()->begin();
+        osIter != Items()->end();
+        osIter++)
+    {
+        if (((*osIter).ServiceInformation()->ProductGroup() == productGroup) &&
+            ((*osIter).ServiceInformation()->ProductSubGroup() == productSubGroup) &&
+            ((*osIter).ServiceInformation()->ServiceApplication() == svcAppl))
+        {
+            itemsToReturn.push_back(*osIter);
+        }
+    }
+
+    return itemsToReturn;
+}
+
+
+int COptionalServiceItems::NumberOfItems(
+COsfServiceInformation::OsfServiceApplication svcAppl)
+{
+    int numberOfItems=0;
+
+    OsfItems::iterator osIter;
+    for (osIter = Items()->begin();
+        osIter != Items()->end();
+        osIter++)
+    {
+        if ((*osIter).ServiceInformation()->ServiceApplication() == svcAppl)
+        {
+            numberOfItems++;
+        }
+    }
+
+    return numberOfItems;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::Items(
+COsfServiceInformation::OsfServiceApplication svcAppl)
+{
+    OsfItems itemsToReturn;
+
+    OsfItems::iterator osIter;
+    for (osIter = Items()->begin();
+        osIter != Items()->end();
+        osIter++)
+    {
+        if ((*osIter).ServiceInformation()->ServiceApplication() == svcAppl)
+        {
+            itemsToReturn.push_back(*osIter);
+        }
+    }
+
+    return itemsToReturn;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::Items(
+set<string> rfiscs,
+set<int> segments)
+{
+    OsfItems itemsToReturn;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            bool rfiscMatch = false;
+            bool segmentMatch = false;
+
+            if (rfiscs.size() > 0)
+            {
+                if (rfiscs.find((*osIter).ServiceInformation()->SubCode()) !=
+                    rfiscs.end())
+                    rfiscMatch = true;
+            }
+
+            if (segments.size() > 0)
+            {
+                set<int>::iterator segmentIter;
+                for (segmentIter = segments.begin();
+                    segmentIter != segments.end();
+                    segmentIter++)
+                {
+                    if ((*osIter).SegmentApplies(*segmentIter) == true)
+                    {
+                        segmentMatch = true;
+                        break;
+                    }
+                }
+            }
+
+            if ((rfiscs.size() > 0) && (segments.size() > 0))
+            {
+                if (rfiscMatch && segmentMatch)
+                    itemsToReturn.push_back(*osIter);
+            }
+            else if (rfiscs.size() > 0)
+            {
+                if (rfiscMatch)
+                    itemsToReturn.push_back(*osIter);
+            }
+            else if (segments.size() > 0)
+            {
+                if (segmentMatch)
+                    itemsToReturn.push_back(*osIter);
+            }
+            else if ((segments.size() == 0) && (rfiscs.size() == 0))
+                itemsToReturn.push_back(*osIter);
+        }
+    }
+
+    return itemsToReturn;
+}
+
+
+void COptionalServiceItems::Update(
+OsfItems* items)
+{
+    Items()->assign(items->begin(), items->end());
+}
+
+
+string COptionalServiceItems::BuildCarryOnAllowances()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems carryOnItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_CARRYON_ALLOWANCE));
+    carryOnItems.sort(OsfBaggageDetailAllowancesSort);
+
+    if (carryOnItems.size() > 0)
+    {
+        response += BuildCarryOnAllowancesHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = carryOnItems.begin();
+            osIter != carryOnItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoForZeroPC(DisplayNoForZeroPC());
+            response += (*osIter).BuildBaggageDetailCarryOnAllowanceResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+            if (firstProv != NULL)
+            {
+                if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                {
+                    textTables.insert(
+                        make_pair(
+                        firstProv->ProvisionText()->TextTable()->TableNumber(),
+                        *(firstProv->ProvisionText())));
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        string textTrans(BuildTextTranslations(&textTables));
+
+        if (textTrans.empty() == false)
+        {
+            DisplayTableNumber(false);
+        }
+
+        response += (textTrans + BuildProvisionsNoteText(&textTables));
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildCarryOnAllowancesHeader()
+{
+    string response;
+
+    if (DisplayFeeApplication() == true)
+        response += "BT   CARRY ON ALLOWANCE  SEQ NUMBER RFISC  OC SCT   NOTE";
+    else
+        response += "BT   CARRY ON ALLOWANCE INFORMATION RFISC  OC SCT   NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildBaggageAllowances()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems allowanceItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE));
+    allowanceItems.sort(OsfBaggageDetailAllowancesSort);
+
+    if (allowanceItems.size() > 0)
+    {
+        response += BuildBaggageAllowancesHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = allowanceItems.begin();
+            osIter != allowanceItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoteText(DisplayNoteText());
+            (*osIter).DisplayConvertedInfo(DisplayConvertedInfo());
+            (*osIter).DisplayNoForZeroPC(DisplayNoForZeroPC());
+
+            response += (*osIter).BuildBaggageDetailAllowanceResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+            if (firstProv != NULL)
+            {
+                if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                {
+                    textTables.insert(
+                        make_pair(
+                        firstProv->ProvisionText()->TextTable()->TableNumber(),
+                        *(firstProv->ProvisionText())));
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        string textTrans(BuildTextTranslations(&textTables));
+
+        if (textTrans.empty() == false)
+        {
+            DisplayTableNumber(false);
+        }
+
+        response += (textTrans + BuildProvisionsNoteText(&textTables));
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildTextTranslations(
+TextTables* textTables)
+{
+    string response;
+
+    TextTables::iterator ttIter;
+    for (ttIter = textTables->begin();
+        ttIter != textTables->end();
+        ttIter++)
+    {
+        (*ttIter).second.DisplayTableNumber(DisplayTableNumber());
+        response += (*ttIter).second.BuildTextTranslations();
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildProvisionsNoteText(
+TextTables* textTables)
+{
+    string response;
+
+    if (DisplayNoteText() == true)
+    {
+        TextTables::iterator ttIter;
+        for (ttIter = textTables->begin();
+            ttIter != textTables->end();
+            ttIter++)
+        {
+            if ((*ttIter).second.NumberOfTextLines() > 0)
+            {
+                (*ttIter).second.DisplayTableNumber(DisplayTableNumber());
+                response += (*ttIter).second.BuildProvisionsNoteText();
+            }
+        }
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildBaggageAllowancesHeader()
+{
+    string response;
+
+    if (DisplayFeeApplication() == true)
+        response += "BT   BAGGAGE ALLOWANCE   SEQ NUMBER RFISC  SC       NOTE";
+    else
+        response += "BT   BAGGAGE ALLOWANCE INFORMATION  RFISC  SC       NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildCarryOnCharges()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems carryOnItems(Items(
+        COsfServiceInformation::OSF_PRODUCT_GROUP_BAGGAGE,
+        COsfServiceInformation::OSF_PRODUCT_SUBGROUP_CARRYON_BAGGAGE,
+        COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_CHARGES));
+
+    carryOnItems.sort(OsfBaggageDetailChargesSort);
+
+    if (carryOnItems.size() > 0)
+    {
+        response += BuildCarryOnChargesHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = carryOnItems.begin();
+            osIter != carryOnItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoteText(DisplayNoteText());
+            (*osIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+            response += (*osIter).BuildBaggageDetailCarryOnChargesResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            if (DisplayNoteText() == true)
+            {
+                COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                if (firstProv != NULL)
+                {
+                    if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                    {
+                        textTables.insert(
+                            make_pair(
+                            firstProv->ProvisionText()->TextTable()->TableNumber(),
+                            *(firstProv->ProvisionText())));
+                    }
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        response += BuildProvisionsNoteText(&textTables);
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildCarryOnChargesHeader()
+{
+    string response;
+
+    response += "BT   ADDITIONAL CARRY ON INFORMATION   CHARGE    RFIC RFISC OC  SCT   NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildEmbargos()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems embargoItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_EMBARGO));
+    embargoItems.sort(OsfBaggageDetailChargesSort);
+
+    if (embargoItems.size() > 0)
+    {
+        response += BuildEmbargosHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = embargoItems.begin();
+            osIter != embargoItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoteText(DisplayNoteText());
+            (*osIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+            response += (*osIter).BuildBaggageDetailEmbargosResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            if (DisplayNoteText() == true)
+            {
+                COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                if (firstProv != NULL)
+                {
+                    if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                    {
+                        textTables.insert(
+                            make_pair(
+                            firstProv->ProvisionText()->TextTable()->TableNumber(),
+                            *(firstProv->ProvisionText())));
+                    }
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        response += BuildProvisionsNoteText(&textTables);
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildEmbargosHeader()
+{
+    string response;
+
+    response += "BT   BAGGAGE EMBARGO INFORMATION      RFISC OC SCT PC     NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildPrepaids()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems prepaidItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_PREPAID));
+    prepaidItems.sort(OsfBaggageDetailAllowancesSort);
+
+    if (prepaidItems.size() > 0)
+    {
+        response += BuildPrepaidsHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = prepaidItems.begin();
+            osIter != prepaidItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoteText(DisplayNoteText());
+            (*osIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+            response += (*osIter).BuildBaggageDetailChargesResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            if (DisplayNoteText() == true)
+            {
+                COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                if (firstProv != NULL)
+                {
+                    if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                    {
+                        textTables.insert(
+                            make_pair(
+                            firstProv->ProvisionText()->TextTable()->TableNumber(),
+                            *(firstProv->ProvisionText())));
+                    }
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        response += BuildProvisionsNoteText(&textTables);
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildPrepaidsHeader()
+{
+    string response;
+
+    response += "BT   BAGGAGE PREPAID INFORMATION       CHARGE    RFIC RFISC SC     NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildBaggageCharges()
+{
+    string response;
+    TextTables textTables;
+
+    OsfItems chargeItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_CHARGES));
+    chargeItems.sort(OsfBaggageDetailChargesSort);
+
+    if (chargeItems.size() > 0)
+    {
+        response += BuildBaggageChargesHeader();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        OsfItems::iterator osIter;
+        for (osIter = chargeItems.begin();
+            osIter != chargeItems.end();
+            osIter++)
+        {
+            (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+            (*osIter).DisplayNoteText(DisplayNoteText());
+            (*osIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+            response += (*osIter).BuildBaggageDetailChargesResponse();
+            response += CSitaNativeResponse::nativeEndOfLine;
+
+            if ((*osIter).FeeAmountTruncated() == true)
+            {
+                FeeAmountTruncated(true);
+            }
+
+            if (DisplayNoteText() == true)
+            {
+                COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                if (firstProv != NULL)
+                {
+                    if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                    {
+                        textTables.insert(
+                            make_pair(
+                            firstProv->ProvisionText()->TextTable()->TableNumber(),
+                            *(firstProv->ProvisionText())));
+                    }
+                }
+            }
+        }
+
+        DisplayTableNumber(true);
+        response += BuildProvisionsNoteText(&textTables);
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildBaggageChargesHeader()
+{
+    string response;
+
+    response += "BT   DESCRIPTION                       CHARGE    RFIC RFISC SC     NOTE";
+
+    return response;
+}
+
+
+string COptionalServiceItems::FeeAmountTruncatedWarning()
+{
+    string warning;
+
+    warning += "CONVERTED FEE AMOUNT/S TRUNCATED";
+
+    return warning;
+}
+
+
+string COptionalServiceItems::FreeBaggageAllowance(
+int segmentNumber)
+{
+    string fba;
+
+    OsfItems fbaItems;
+    if (NumberOfItems(COsfServiceInformation::OSF_SERVICE_APPL_MANUAL_BAGGAGE_ALLOWANCE) > 0)
+    {
+        fbaItems = Items(COsfServiceInformation::OSF_SERVICE_APPL_MANUAL_BAGGAGE_ALLOWANCE);
+    }
+    else
+    {
+        fbaItems = Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE);
+    }
+
+    OsfItems::iterator osIter;
+    for (osIter = fbaItems.begin();
+        osIter != fbaItems.end();
+        osIter++)
+    {
+        if ((*osIter).SegmentApplies(segmentNumber) == true)
+        {
+            COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+            if (firstProv != NULL)
+            {
+                firstProv->DisplayNumberOfPieces(AddAmountToBaggagePiece());
+                firstProv->DisplayNoForZero(DisplayNoForZeroPC());
+                firstProv->TicketingFormat(TicketingFormat());
+                fba = firstProv->FreeBaggageAllowance();
+            }
+
+            break;
+        }
+    }
+
+    return fba;
+}
+
+
+string COptionalServiceItems::MostSignificantCarrier(
+int segmentNumber)
+{
+    string msc;
+
+    OsfItems::iterator osIter;
+    for (osIter = Items()->begin();
+        osIter != Items()->end();
+        osIter++)
+    {
+        if ((*osIter).ServiceInformation()->ServiceApplication() ==
+            COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE)
+        {
+            if ((*osIter).SegmentApplies(segmentNumber) == true)
+            {
+                msc = (*osIter).ServiceInformation()->ServiceCarrier();
+                break;
+            }
+        }
+    }
+
+    return msc;
+}
+
+
+int COptionalServiceItems::NumberOfFreePieces(
+int segmentNumber)
+{
+    int numFreePieces=0;
+
+    if (NumberOfItems() > 0)
+    {
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if ((*osIter).ServiceInformation()->ServiceApplication() ==
+                COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE)
+            {
+                if ((*osIter).SegmentApplies(segmentNumber) == true)
+                {
+                    COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                    if (firstProv != NULL)
+                    {
+                        numFreePieces = firstProv->NumberOfFreePieces();
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    return numFreePieces;
+}
+
+
+void COptionalServiceItems::DepartureArrivalCities(
+__ns1__DLXAncillaryAirItemPriceSvResponse* response)
+{
+    if (response == NULL) return;
+
+    if (response->
+        ns2__DLXAncillaryAirItemPriceSvResponse->
+        union_DLXAncillaryAirItemPriceSvResponse.
+        ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+        __union_DLX_USCOREAncillaryAirItemPriceSvRS ==
+        SOAP_UNION__ns31__union_DLX_USCOREAncillaryAirItemPriceSvRS_Errors)
+    {
+        return;
+    }
+
+    if (response->
+        ns2__DLXAncillaryAirItemPriceSvResponse->
+        union_DLXAncillaryAirItemPriceSvResponse.
+        ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+        union_DLX_USCOREAncillaryAirItemPriceSvRS.
+        DLX_USCOREAncillaryAirItemPriceRS->RequestCriteria != NULL)
+    {
+        _ns31__DLX_USCOREAncillaryAirItemPriceSvRS_DLX_USCOREAncillaryAirItemPriceRS_RequestCriteria* requestCriteria =
+            response->
+            ns2__DLXAncillaryAirItemPriceSvResponse->
+            union_DLXAncillaryAirItemPriceSvResponse.
+            ns31__DLX_USCOREAncillaryAirItemPriceSvRS->
+            union_DLX_USCOREAncillaryAirItemPriceSvRS.
+            DLX_USCOREAncillaryAirItemPriceRS->RequestCriteria;
+
+        if (requestCriteria->PricedItinerary != NULL)
+        {
+            if (requestCriteria->PricedItinerary->AirItinerary != NULL)
+            {
+                _ns27__PricedItineraryType_AirItinerary_OriginDestinationOptions originDestinationOptions =
+                    requestCriteria->PricedItinerary->AirItinerary->OriginDestinationOptions;
+
+                for (int optionNum = 0;
+                    optionNum < originDestinationOptions.__sizeOriginDestinationOption;
+                    optionNum++)
+                {
+                    _ns27__PricedItineraryType_AirItinerary_OriginDestinationOptions_OriginDestinationOption odOption =
+                        originDestinationOptions.OriginDestinationOption[optionNum];
+
+                    for (int flightSegmentNum = 0;
+                        flightSegmentNum < odOption.__sizeFlightSegment;
+                        flightSegmentNum++)
+                    {
+                        _ns27__PricedItineraryType_AirItinerary_OriginDestinationOptions_OriginDestinationOption_FlightSegment flightSegment =
+                            odOption.FlightSegment[flightSegmentNum];
+
+                        if (flightSegment.DepartureAirport != NULL)
+                        {
+                            DepartureCity(atoi(flightSegment.RPH), flightSegment.DepartureAirport->LocationCode);
+                        }
+
+                        if (flightSegment.ArrivalAirport != NULL)
+                        {
+                            ArrivalCity(atoi(flightSegment.RPH), flightSegment.ArrivalAirport->LocationCode);
+                        }
+
+                        CPricingSegment ps(&flightSegment);
+                        AddPricingSegment(atoi(flightSegment.RPH), &ps);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+void COptionalServiceItems::DepartureArrivalCities(
+tas1__TSKOptionalServiceResponse* response)
+{
+    if (response == NULL) return;
+
+    if (response->
+        response->
+        RequestCriteria != NULL)
+    {
+
+        tas1__RequestCriteria* requestCriteria = response->response->RequestCriteria;
+
+        if (requestCriteria->AncillaryAirItemPriceRQ->AirItinerarys != NULL)
+        {
+            for (int flightSegmentNum = 0;
+                flightSegmentNum < requestCriteria->AncillaryAirItemPriceRQ->__sizeAirItinerarys;
+                flightSegmentNum++)
+            {
+                tas1__AirItinerary flightSegment = *requestCriteria->AncillaryAirItemPriceRQ->AirItinerarys[flightSegmentNum];
+
+                if (flightSegment.DepartureAirportCode != NULL)
+                {
+                    DepartureCity(flightSegment.RPH, flightSegment.DepartureAirportCode);
+                }
+
+                if (flightSegment.ArrivalAirportCode != NULL)
+                {
+                    ArrivalCity(flightSegment.RPH, flightSegment.ArrivalAirportCode);
+                }
+
+                CPricingSegment ps(&flightSegment);
+                AddPricingSegment(flightSegment.RPH, &ps);
+            }
+        }
+    }
+}
+
+
+string COptionalServiceItems::DepartureCity(
+int segmentNumber)
+{
+    string city;
+
+    if (DepartureCities()->size() > 0)
+    {
+        CityMap::iterator cityIter;
+
+        if (segmentNumber > 0)
+        {
+            if ((cityIter = DepartureCities()->find(segmentNumber)) != DepartureCities()->end())
+            {
+                city = (*cityIter).second;
+            }
+        }
+        else
+        {
+            if ((cityIter = DepartureCities()->find(1)) != DepartureCities()->end())
+            {
+                city = (*cityIter).second;
+            }
+        }
+    }
+
+    return city;
+}
+
+
+string COptionalServiceItems::ArrivalCity(
+int segmentNumber)
+{
+    string city;
+    if (ArrivalCities()->size() > 0)
+    {
+        CityMap::iterator cityIter;
+
+        if (segmentNumber > 0)
+        {
+            if ((cityIter = ArrivalCities()->find(segmentNumber)) != ArrivalCities()->end())
+            {
+                city = (*cityIter).second;
+            }
+        }
+        else
+        {
+            if ((cityIter = ArrivalCities()->find(ArrivalCities()->size())) != ArrivalCities()->end())
+            {
+                city = (*cityIter).second;
+            }
+        }
+    }
+
+    return city;
+}
+
+
+string COptionalServiceItems::DepartureDate(
+int segmentNumber)
+{
+    string response;
+
+    ItineraryPricingSegments::iterator psIter;
+    if ((psIter = PricingSegments()->find(segmentNumber)) != PricingSegments()->end())
+    {
+        response = (*psIter).second.GetDepartureDate(SITADate::SITA_DATE_DDMMMYY);
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedBaggage()
+{
+    string response;
+    string carryOnAllowance;
+    string baggageAllowance;
+    string carryOnCharges;
+    string additionalCharges;
+    int numberOfBTs = DepartureCities()->size();
+
+    FeeAmountTruncated(false);
+
+    if (TicketingFormat() == true)
+        response += "*** E-TKT CONFIRMATION BAGGAGE DATA ***";
+    else
+        response += "**E-TKT CONFIRMATION BAGGAGE DATA";
+
+    response += CSitaNativeResponse::nativeEndOfLine;
+
+// Build the carry on allowance section
+    carryOnAllowance = BuildExpandedCarryOnAllowances();
+
+// Build the baggage allowance section
+    baggageAllowance = BuildExpandedBaggageAllowances();
+
+// Build the carry on charges
+    carryOnCharges = BuildExpandedCarryOnCharges();
+
+// Build the carry on charges
+    additionalCharges = BuildExpandedCharges();
+
+    if (FeeAmountTruncated() == true)
+    {
+        response += "*" + FeeAmountTruncatedWarning();
+        response += CSitaNativeResponse::nativeEndOfLine;
+    }
+
+// OUTPUT THE CARRY ON ALLOWANCE
+    if (carryOnAllowance.length() != 0)
+    {
+        if (TicketingFormat() == true)
+        {
+            response += carryOnAllowance;
+        }
+        else
+        {
+            response += "BT   CARRY ON ALLOWANCE INFORMATION        OC SCT";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += carryOnAllowance;
+        }
+    }
+
+// OUTPUT IF NEITHER CARRY ON ALLOWANCE OR CHARGES EXIST
+    if ((carryOnAllowance.length() == 0) &&
+        (carryOnCharges.length() == 0))
+    {
+        if (TicketingFormat() == true)
+        {
+            response += BuildExpandedTicketingWarningLine(
+                BLANK,
+                true,
+                1,
+                numberOfBTs,
+                "CARRY ON INFORMATION NOT AVAILABLE - CONTACT CARRIER",
+                "");
+        }
+        else
+        {
+            response += "BT   CARRY ON ALLOWANCE INFORMATION";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += BuildExpandedSegmentRange(1, numberOfBTs);
+            response += "CARRY ON INFORMATION NOT AVAILABLE - CONTACT CARRIER";
+            response += CSitaNativeResponse::nativeEndOfLine;
+        }
+    }
+
+// OUTPUT BAGGAGE ALLOWANCE
+    if (baggageAllowance.length() != 0)
+    {
+        if (TicketingFormat() == true)
+        {
+            response += baggageAllowance;
+        }
+        else
+        {
+            response += "BT   BAGGAGE ALLOWANCE INFORMATION         SC";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += baggageAllowance;
+        }
+    }
+    else
+    {
+        if (TicketingFormat() == true)
+        {
+            response += BuildExpandedTicketingWarningLine(
+                ALLOWANCE,
+                false,
+                1,
+                numberOfBTs,
+                "BAGGAGE FEES MAY APPLY-CONTACT CARRIER",
+                "");
+        }
+        else
+        {
+            response += "BT   BAGGAGE ALLOWANCE INFORMATION         SC";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += BuildExpandedSegmentRange(1, numberOfBTs);
+            response += "BAGGAGE FEES MAY APPLY-CONTACT CARRIER";
+            response += CSitaNativeResponse::nativeEndOfLine;
+        }
+    }
+
+// OUTPUT ADDITIONAL CARRY ON INFORMATION
+    if (carryOnCharges.length() != 0)
+    {
+        if (TicketingFormat() == true)
+        {
+            response += carryOnCharges;
+        }
+        else
+        {
+            response += "BT   ADDITIONAL CARRY ON INFORMATION   CHARGE    RFIC RFISC OC  SCT";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += carryOnCharges;
+        }
+    }
+
+// OUTPUT ADDITIONAL CHARGES
+    if (additionalCharges.length() != 0)
+    {
+        if (TicketingFormat() == true)
+        {
+            response += additionalCharges;
+        }
+        else
+        {
+            response += "BT   ADDITIONAL BAGGAGE INFORMATION    CHARGE    RFIC RFISC SC";
+            response += CSitaNativeResponse::nativeEndOfLine;
+            response += additionalCharges;
+        }
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedBaggageAllowances()
+{
+    string response;
+    int prevStart = 0;
+    int prevEnd = 0;
+    int numberOfBTs = DepartureCities()->size();
+
+    OsfItems allowanceItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE));
+    allowanceItems.sort(OsfBaggageDetailAllowancesSort);
+
+    OsfItems::iterator itemIter;
+    for (itemIter = allowanceItems.begin();
+        itemIter != allowanceItems.end();
+        itemIter++)
+    {
+        int currStart(*((*itemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin()));
+        int currEnd(*((*itemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->rbegin()));
+
+// Check if we need prepend a "blank" (line for preceding BTs)
+        if (((prevStart == 0) && (prevEnd == 0) && (currStart != 1))
+            ||
+            ((prevStart != 0) && (prevEnd != 0) &&
+            ((prevStart != currStart) && (prevEnd != currEnd) &&
+            ((prevEnd + 1) != currStart))))
+        {
+            int startRange = prevEnd + 1;
+            int endRange = currStart - 1;
+
+            if (TicketingFormat() == true)
+            {
+                response += BuildExpandedTicketingWarningLine(
+                    ALLOWANCE,
+                    true,
+                    startRange,
+                    endRange,
+                    "NO BAGGAGE ALLOWANCE FILED",
+                    "");
+            }
+            else
+            {
+                response += BuildExpandedSegmentRange(startRange, endRange);
+                response += "NO BAGGAGE ALLOWANCE FILED";
+                response += CSitaNativeResponse::nativeEndOfLine;
+            }
+        }
+
+// Set up the item object with the correct flags
+        (*itemIter).DisplayNoForZeroPC(DisplayNoForZeroPC());
+        (*itemIter).TicketingFormat(TicketingFormat());
+        (*itemIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+        response += (*itemIter).BuildExpandedAllowance();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+// Set prevStart, prevEnd
+        prevStart = currStart;
+        prevEnd = currEnd;
+    }
+
+// Add possible "blank" line
+    if ((prevEnd != 0) && (prevEnd < numberOfBTs))
+    {
+        if (TicketingFormat() == true)
+        {
+            response += BuildExpandedTicketingWarningLine(
+                ALLOWANCE,
+                true,
+                prevEnd + 1,
+                numberOfBTs,
+                "NO BAGGAGE ALLOWANCE FILED",
+                "");
+        }
+        else
+        {
+            response += BuildExpandedSegmentRange(prevEnd + 1, numberOfBTs);
+            response += "NO BAGGAGE ALLOWANCE FILED";
+            response += CSitaNativeResponse::nativeEndOfLine;
+        }
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedCarryOnAllowances()
+{
+    string response;
+
+    OsfItems allowanceItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_CARRYON_ALLOWANCE));
+    allowanceItems.sort(OsfBaggageDetailAllowancesSort);
+
+    OsfItems::iterator itemIter;
+    for (itemIter = allowanceItems.begin();
+        itemIter != allowanceItems.end();
+        itemIter++)
+    {
+        (*itemIter).DisplayNoForZeroPC(DisplayNoForZeroPC());
+        (*itemIter).TicketingFormat(TicketingFormat());
+        (*itemIter).DisplayConvertedInfo(DisplayConvertedInfo());
+
+        response += (*itemIter).BuildExpandedAllowance();
+        response += CSitaNativeResponse::nativeEndOfLine;
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedCarryOnCharges()
+{
+    string response;
+
+    OsfItems chargeItems(Items(
+        COsfServiceInformation::OSF_PRODUCT_GROUP_BAGGAGE,
+        COsfServiceInformation::OSF_PRODUCT_SUBGROUP_CARRYON_BAGGAGE,
+        COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_CHARGES));
+
+    chargeItems.sort(OsfExpandedBaggageLowestChargeSort);
+
+    OsfItems::iterator itemIter;
+    for  (itemIter =  chargeItems.begin();
+        itemIter != chargeItems.end();
+        itemIter++)
+    {
+        (*itemIter).TicketingFormat(TicketingFormat());
+        (*itemIter).DisplayConvertedInfo(DisplayConvertedInfo());
+        response += (*itemIter).BuildExpandedCarryOnCharge();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        if ((*itemIter).FeeAmountTruncated() == true)
+        {
+            FeeAmountTruncated(true);
+        }
+    }
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedCharges()
+{
+    string response;
+    string embargoLines;
+    int numberOfBTs = DepartureCities()->size();
+    int currentBT = 1;
+    int lastBTDisplayed = -1;
+    set<string> subCodeSet;
+    subCodeSet.insert("0ME");                     // This should always get displayed
+    bool chargesShown = false;
+
+// Get and Sort the Allowance List
+    OsfItems baggageAllowanceItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_ALLOWANCE));
+    baggageAllowanceItems.sort(OsfBaggageDetailAllowancesSort);
+
+// Add the charge.  Do do this we loop through the allowances and:
+// If 2 PC (no charges added)
+// If 1 PC (one charge added)
+// If NO or 0PC (two charges added)
+
+    currentBT = 1;
+    lastBTDisplayed = -1;
+    OsfItems::iterator baggageAllowanceItemIter;
+    for  (baggageAllowanceItemIter =  baggageAllowanceItems.begin();
+        baggageAllowanceItemIter != baggageAllowanceItems.end();
+        baggageAllowanceItemIter++)
+    {
+// Check if we need prepend a "blank" (line for preceding BTs)
+        if (currentBT != (*(*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin()))
+        {
+            int startRange = currentBT;
+            int endRange = (*(*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin()) - 1;
+
+            if (TicketingFormat() == true)
+            {
+                response += BuildExpandedTicketingWarningLine(
+                    CHARGE,
+                    false,
+                    startRange,
+                    endRange,
+                    "BAGGAGE FEES MAY APPLY-CONTACT CARRIER",
+                    "");
+            }
+            else
+            {
+                response += BuildExpandedSegmentRange(startRange, endRange);
+                response += "BAGGAGE FEES MAY APPLY-CONTACT CARRIER";
+                response += CSitaNativeResponse::nativeEndOfLine;
+            }
+        }
+
+        currentBT = (*(*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->rbegin()) + 1;
+
+        lastBTDisplayed = (*((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->rbegin()));
+
+        int quantity = 0;
+
+// Determine how many charges we need to attemp to find
+        COptionalServiceItem::ProvisionInfoList::iterator piIter((*baggageAllowanceItemIter).ProvisionInformation()->begin());
+        if ((piIter != (*baggageAllowanceItemIter).ProvisionInformation()->end()) &&
+            ((*piIter).BaggageAllowanceFreePieces().empty() == false))
+        {
+            quantity = atoi((*piIter).BaggageAllowanceFreePieces().c_str());
+        }
+        else
+        {
+            continue;                             /* Do not search for additional if not PC */
+        }
+
+// Select the Charges
+        OsfItems myCharges;
+
+        if (quantity == 0)
+            myCharges = GetExpandedChargesItems((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH(), 2);
+        else if (quantity == 1)
+            myCharges = GetExpandedChargesItems((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH(), 1);
+        else
+            continue;
+
+        if (myCharges.size() == 0)
+        {
+            if (TicketingFormat() == true)
+            {
+                if ((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->size() > 0)
+                {
+                    response += BuildExpandedTicketingWarningLine(
+                        CHARGE,
+                        false,
+                        *((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin()),
+                        *((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->rbegin()),
+                        "BAGGAGE FEES MAY APPLY-CONTACT CARRIER",
+                        "");
+                }
+            }
+            else
+            {
+                response.append(BuildExpandedSegmentRange((*baggageAllowanceItemIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()));
+                response.append("BAGGAGE FEES MAY APPLY-CONTACT CARRIER");
+                response.append(CSitaNativeResponse::nativeEndOfLine);
+            }
+        }
+        else
+        {
+            OsfItems::iterator myChargesIter;
+            for (myChargesIter = myCharges.begin();
+                myChargesIter != myCharges.end();
+                myChargesIter++)
+            {
+                (*myChargesIter).TicketingFormat(TicketingFormat());
+                (*myChargesIter).DisplayConvertedInfo(DisplayConvertedInfo());
+                response += (*myChargesIter).BuildExpandedCharge();
+                response += CSitaNativeResponse::nativeEndOfLine;
+
+                chargesShown = true;
+                subCodeSet.insert((*myChargesIter).ServiceInformation()->SubCode());
+
+                if ((*myChargesIter).FeeAmountTruncated() == true)
+                {
+                    FeeAmountTruncated(true);
+                }
+            }
+        }
+    }
+
+// Add the embargo lines
+// Now output the EMBARGOS that match the RFISC in the above charges, or RFISC is 0ME
+    if (chargesShown)
+    {
+        set<string>::iterator subCodeSetIter;
+
+        OsfItems embargoItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_EMBARGO));
+        embargoItems.sort(OsfBaggageDetailAllowancesSort);
+
+        OsfItems::iterator embargoItemsIter;
+        for (embargoItemsIter = embargoItems.begin();
+            embargoItemsIter != embargoItems.end();
+            embargoItemsIter++)
+        {
+            if ((subCodeSetIter = subCodeSet.find((*embargoItemsIter).ServiceInformation()->SubCode())) !=
+                subCodeSet.end())
+            {
+                (*embargoItemsIter).TicketingFormat(TicketingFormat());
+                (*embargoItemsIter).DisplayConvertedInfo(DisplayConvertedInfo());
+                embargoLines.append((*embargoItemsIter).BuildExpandedCharge());
+                embargoLines.append(CSitaNativeResponse::nativeEndOfLine);
+
+                if ((*embargoItemsIter).FeeAmountTruncated() == true)
+                {
+                    FeeAmountTruncated(true);
+                }
+            }
+        }
+
+        if (embargoLines.length() != 0)
+        {
+            if (TicketingFormat() == true)
+            {
+                response.append(embargoLines);
+            }
+            else
+            {
+                response.append("BT   1ST/2ND BAGGAGE EMBARGO          RFISC OC SCT PC");
+                response.append(CSitaNativeResponse::nativeEndOfLine);
+                response.append(embargoLines);
+            }
+        }
+    }
+
+// Add possible "blank" line
+    if ((lastBTDisplayed != -1) && (lastBTDisplayed < numberOfBTs))
+    {
+        if (TicketingFormat() == true)
+        {
+            response += BuildExpandedTicketingWarningLine(
+                CHARGE,
+                false,
+                lastBTDisplayed + 1, numberOfBTs,
+                "BAGGAGE FEES MAY APPLY-CONTACT CARRIER", "");
+        }
+        else
+        {
+            response += BuildExpandedSegmentRange(lastBTDisplayed + 1, numberOfBTs);
+            response += "BAGGAGE FEES MAY APPLY-CONTACT CARRIER";
+            response += CSitaNativeResponse::nativeEndOfLine;
+        }
+    }
+
+    return response;
+}
+
+
+COptionalServiceItems::OsfItems COptionalServiceItems::GetExpandedChargesItems(
+COsfApplyPricedOptionTo::SegmentSet* segmentNumberSet,
+int numberOfCharges)
+{
+    OsfItems applicableCharges;
+    OsfItems chargeToReturn;
+    OsfItems::iterator osIter;
+    COptionalServiceItem::ProvisionInfoList::iterator piIter;
+
+    OsfItems chargeItems(Items(COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_CHARGES));
+    if (chargeItems.size() > 0)
+    {
+        for (osIter = chargeItems.begin();
+            osIter != chargeItems.end();
+            osIter++)
+        {
+            if (segmentNumberSet->size() > 0 &&
+                (*osIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->size() > 0)
+            {
+// filter by the segment number
+                if (*(segmentNumberSet->begin()) == (*(*osIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->begin()) &&
+                    *(segmentNumberSet->rbegin()) == (*(*osIter).ApplyPricedOptionTo()->ItinerarySegmentRPH()->rbegin()))
+                {
+                    piIter = (*osIter).ProvisionInformation()->begin();
+
+                    if ((piIter != (*osIter).ProvisionInformation()->end()) &&
+                        ((*piIter).Available()))
+                    {
+                        if ((((*osIter).ServiceInformation()->ServiceApplication() ==
+                            COsfServiceInformation::OSF_SERVICE_APPL_BAGGAGE_CHARGES) ||
+                            ((*osIter).ServiceInformation()->ServiceApplication() ==
+                            COsfServiceInformation::OSF_SERVICE_APPL_PREPAID)) &&
+                            ((*osIter).ServiceInformation()->ProductGroup() ==
+                            COsfServiceInformation::OSF_PRODUCT_GROUP_BAGGAGE) &&
+                            ((*osIter).ServiceInformation()->ProductSubGroup() ==
+                            COsfServiceInformation::OSF_PRODUCT_SUBGROUP_UNKNOWN))
+                            applicableCharges.push_back((*osIter));
+                    }
+                }
+            }
+        }
+    }
+
+// Sort the charges
+    applicableCharges.sort(OsfExpandedBaggageLowestChargeSort);
+
+    if (numberOfCharges == 1)
+    {
+        for (osIter  = applicableCharges.begin();
+            osIter != applicableCharges.end();
+            osIter++)
+        {
+            if ((piIter  = (*osIter).ProvisionInformation()->begin()) !=
+                (*osIter).ProvisionInformation()->end())
+            {
+                if ((atoi((*piIter).BaggageExcessFirstOccurrence().c_str()) == 1) ||
+                    ((*piIter).BaggageExcessFirstOccurrence().length() == 0))
+                {
+                    chargeToReturn.push_back(*osIter);
+                    return chargeToReturn;
+                }
+            }
+        }
+    }
+    else if (numberOfCharges == 2)
+    {
+// Look for a FOCC of "1" if LOCC is "2" or "blank" we can quit
+        for (osIter  = applicableCharges.begin();
+            osIter != applicableCharges.end();
+            osIter++)
+        {
+            if ((piIter  = (*osIter).ProvisionInformation()->begin()) !=
+                (*osIter).ProvisionInformation()->end())
+            {
+                if ((atoi((*piIter).BaggageExcessFirstOccurrence().c_str()) == 1))
+                {
+                    chargeToReturn.push_back(*osIter);
+
+                    if ((*piIter).BaggageExcessLastOccurrence().length() == 0)
+                        return chargeToReturn;
+                    else
+                    if (atoi((*piIter).BaggageExcessLastOccurrence().c_str()) > 1)
+                        return chargeToReturn;
+
+                    break;
+                }
+            }
+        }
+
+// Look for a FOCC of "2" or "blank"
+        for (osIter  = applicableCharges.begin();
+            osIter != applicableCharges.end();
+            osIter++)
+        {
+            if ((piIter  = (*osIter).ProvisionInformation()->begin()) !=
+                (*osIter).ProvisionInformation()->end())
+            {
+                if ((atoi((*piIter).BaggageExcessFirstOccurrence().c_str()) == 2) ||
+                    ((*piIter).BaggageExcessFirstOccurrence().length() == 0))
+                {
+                    chargeToReturn.push_back(*osIter);
+                    return chargeToReturn;
+                }
+            }
+        }
+    }
+
+    return chargeToReturn;
+}
+
+
+string COptionalServiceItems::BuildExpandedTicketingWarningLine(
+ExpandedTicketingWarningIndicator ind,
+bool carryOn,
+int startRange,
+int endRange,
+string msg,
+string cc)
+{
+    string response = "W";
+
+// Allowance/Charge indicator
+    if (ind == CHARGE)
+        response += "C";
+    else if (ind == ALLOWANCE)
+        response += "A";
+    else
+        response += " ";
+
+// Type
+    if (carryOn)
+        response += "C";
+    else
+        response += "B";
+
+// Start/End segments
+    response += BuildExpandedSegmentRange(startRange, endRange);
+
+// Description
+    stringstream descStr;
+    descStr.width(60);
+    descStr.fill(' ');
+    descStr.flags(ios::left);
+    if (msg.length() > 60)
+        descStr << msg.substr(0, 60);
+    else
+        descStr << msg;
+
+    response += descStr.str();
+
+// Selected Carrier Code
+    stringstream ccStr;
+    ccStr.width(3);
+    ccStr.fill(' ');
+    ccStr.flags(ios::right);
+    ccStr << cc;
+
+    response += ccStr.str();
+
+    response += CSitaNativeResponse::nativeEndOfLine;
+
+    return response;
+}
+
+
+string COptionalServiceItems::BuildExpandedSegmentRange(int startRange, int endRange)
+{
+    stringstream startRangeStream;
+    startRangeStream.width(2);
+    startRangeStream.fill('0');
+    startRangeStream << startRange;
+
+    stringstream endRangeStream;
+    endRangeStream.width(2);
+    endRangeStream.fill('0');
+    endRangeStream << endRange;
+
+    if (TicketingFormat() == true)
+    {
+        return (startRangeStream.str() + endRangeStream.str());
+    }
+    else
+    {
+        if (startRange == endRange)
+            return (startRangeStream.str() + "    ");
+        else
+            return (startRangeStream.str() + "-" + endRangeStream.str() + " ");
+    }
+}
+
+
+string COptionalServiceItems::BuildExpandedSegmentRange(
+COsfApplyPricedOptionTo::SegmentSet* segNumSet)
+{
+    COsfApplyPricedOptionTo::SegmentSet::iterator segNumSetIter;
+    COsfApplyPricedOptionTo::SegmentSet::iterator nextSegNumSetIter;
+    int startRange = -1;
+    int endRange = -1;
+
+    for (segNumSetIter = segNumSet->begin();
+        segNumSetIter != segNumSet->end();
+        segNumSetIter++)
+    {
+        bool addData = false;
+        if (segNumSetIter == segNumSet->begin())
+        {
+            startRange = (*segNumSetIter);
+            endRange = (*segNumSetIter);
+        }
+        else
+        {
+            if ((endRange + 1) == (*segNumSetIter))
+                endRange = (*segNumSetIter);
+            else
+                addData = true;
+        }
+
+        nextSegNumSetIter = segNumSetIter;
+        nextSegNumSetIter++;
+
+// Must add the line if we are done with iterating or end of a range
+        if ((nextSegNumSetIter == segNumSet->end()) || addData)
+        {
+            stringstream startRangeStream;
+            startRangeStream.width(2);
+            startRangeStream.fill('0');
+            startRangeStream << startRange;
+
+            stringstream endRangeStream;
+            endRangeStream.width(2);
+            endRangeStream.fill('0');
+            endRangeStream << endRange;
+
+            if (TicketingFormat() == true)
+                return (startRangeStream.str() + endRangeStream.str());
+            else
+            {
+                if (startRange == endRange)
+                    return (startRangeStream.str() + "    ");
+                else
+                    return (startRangeStream.str() + "-" + endRangeStream.str() + " ");
+            }
+        }
+    }
+
+    if (TicketingFormat() == true)
+        return "0000";
+    else
+        return "";
+}
+
+
+string COptionalServiceItems::BuildBaggageCalculator()
+{
+    string response;
+    TextTables textTables;
+
+    if (Solutions()->size() > 0)
+    {
+        PricingSolutions::iterator psIter;
+        psIter = Solutions()->begin();
+        std::string btRange = (*psIter).FormatSegmentsToBTs();
+        std::string currency = (*psIter).Fee().Currency();
+
+        response += "BT " + btRange + CSitaNativeResponse::nativeEndOfLine;
+
+        response += "B# ";
+
+        if (DisplayMetric() == true)
+            response += "KGS LCM ";
+        else
+            response += "LBS LIN ";
+
+        response += "DESCRIPTION                 RFI-C/SC  EMD CXR FEE---";
+        response += currency;
+
+        response += "     NOTE";
+
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+    Items()->sort(OsfBaggageCalculatorSort);
+
+// Iterate thru the OsfItems
+        OsfItems::iterator osIter;
+        for (osIter = Items()->begin();
+            osIter != Items()->end();
+            osIter++)
+        {
+            if ((*osIter).ApplyPricedOptionTo()->BaggageInfo()->Id() > 0)
+            {
+                (*osIter).DisplayFeeApplication(DisplayFeeApplication());
+                (*osIter).DisplayRate(DisplayRate());
+                response += (*osIter).BuildBaggageCalculatorResponse();
+                response += CSitaNativeResponse::nativeEndOfLine;
+
+                if (DisplayNoteText() == true)
+                {
+                    COsfProvisionInformation* firstProv((*osIter).FirstProvision());
+                    if (firstProv != NULL)
+                    {
+                        if (firstProv->ProvisionText()->TextTable()->TableNumber() > 0)
+                        {
+                            textTables.insert(
+                                make_pair(
+                                firstProv->ProvisionText()->TextTable()->TableNumber(),
+                                *(firstProv->ProvisionText())));
+                        }
+                    }
+                }
+            }
+        }
+
+        response += "======================================================== FEE---";
+        response += currency;
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        response += "***TOTAL BT ";
+
+        stringstream btStream;
+        btStream.width(5);
+        btStream.fill(' ');
+        btStream.flags(ios::left);
+        btStream << btRange;
+
+        response += btStream.str();
+
+        stringstream totalAmountStream;
+        totalAmountStream.width(49);
+        totalAmountStream.fill(' ');
+        totalAmountStream.flags(ios::right);
+        totalAmountStream << (*psIter).Fee().AmountOrText();
+
+        response += totalAmountStream.str();
+        response += CSitaNativeResponse::nativeEndOfLine;
+
+        DisplayTableNumber(true);
+
+      if (DisplayFeeApplication())
+      {
+        response += BuildBaggageCalculatorReferenceFareLine();
+         response += BuildBaggageCalculatorRateUsedLines();
+      }
+
+        response += BuildProvisionsNoteText(&textTables);
+    }
+    else
+    {
+        response += "NO SOLUTION RETURNED";
+        response += CSitaNativeResponse::nativeEndOfLine;
+    }
+
+    return response;
+}
+
+string COptionalServiceItems::BuildBaggageCalculatorReferenceFareLine()
+{
+  string resp;
+
+  if (Solutions()->size() > 0)
+    {
+      PricingSolutions::iterator psIter = Solutions()->begin();
+      
+      if (((*psIter).ReferenceFareCurrency().length() != 0) &&
+	  ((*psIter).ReferenceFareOwner().length() != 0) &&
+	  ((*psIter).ReferenceFareClass().length() != 0))
+	{
+	  resp += "HIGHEST ECON FARE ";
+	  
+	  // Reference Fare Currency
+	  stringstream refFareCurrStream;
+	  refFareCurrStream.width(3);
+	  refFareCurrStream.fill(' ');
+	  refFareCurrStream.flags(ios::left);
+	  refFareCurrStream << (*psIter).ReferenceFareCurrency().substr(0, 3);      
+
+	  resp += refFareCurrStream.str();
+	  
+	  // Reference Fare Amount
+	  stringstream refFareAmountStream;
+	  refFareAmountStream.width(9);
+	  refFareAmountStream.fill(' ');
+	  refFareAmountStream.flags(ios::right);
+	  refFareAmountStream << (*psIter).ReferenceFareAmount().substr(0, 9);
+	  
+	  resp += refFareAmountStream.str();
+	  
+	  resp += " ";
+	  
+	  // Reference Fare Owner
+	  resp += "FARE OWNER ";
+
+	  stringstream refFareOwnerStream;
+	  refFareOwnerStream.width(3);
+	  refFareOwnerStream.fill(' ');
+	  refFareOwnerStream.flags(ios::left);
+	  refFareOwnerStream << (*psIter).ReferenceFareOwner().substr(0, 3);
+	  
+	  resp += refFareOwnerStream.str();
+	  resp += " ";
+	  
+	  // Reference Fare Class
+	  resp += "FARE CLASS ";
+
+	  stringstream refFareClassStream;
+	  refFareClassStream.width(9);
+	  refFareClassStream.fill(' ');
+	  refFareClassStream.flags(ios::left);
+	  refFareClassStream << (*psIter).ReferenceFareClass().substr(0, 9);
+	  
+	  resp += refFareClassStream.str();
+	  resp += CSitaNativeResponse::nativeEndOfLine;
+	}
+    }
+
+  return resp;
+}
+
+string COptionalServiceItems::BuildBaggageCalculatorRateUsedLines()
+{
+  string resp;
+
+  // Iterate thru all items, return the first exchange rate found
+  OsfItems::iterator osIter;
+  for (osIter = Items()->begin();
+       osIter != Items()->end();
+       osIter++)
+    {
+      /*** TravelSky Zhang Yang indicated on 6/7/13 
+       *** middle currency will not be used
+
+      if (((*psIter).Fee().Currency().length() != 0) &&
+	  ((*psIter).Fee().MiddleCurrency().length() != 0) &&
+	  ((*psIter).Fee().EquivCurrency().length() != 0))
+	{
+	  resp += "RATE USED 1";
+
+	  resp += (*psIter).Fee().Currency();
+
+	  resp += "=";
+
+	  stringstream middleExchRateStream;
+	  middleExchRateStream << (*psIter).Fee().MiddleExchangeRate();
+	  
+	  resp += middleExchRateStream.str();
+	  resp += (*psIter).Fee().MiddleCurrency();
+
+	  resp += " 1";
+
+	  resp += (*psIter).Fee().Currency();
+	  
+	  resp += "=";	  
+
+	  stringstream exchRateStream;
+	  exchRateStream << (*psIter).Fee().ExchangeRate();
+	  
+	  resp += exchRateStream.str();
+	  resp += (*psIter).Fee().EquivCurrency();
+	  resp += CSitaNativeResponse::nativeEndOfLine;
+
+	  return resp;
+	}
+      ***/
+
+      if (((*osIter).Fees() != NULL) &&
+          ((*osIter).Fees()->Fees()->size() == 1))
+        {
+	  COsfFees::FeesList::iterator feeIter;
+          feeIter = (*osIter).Fees()->Fees()->begin();
+
+	  if (((*feeIter).Currency().length() != 0) &&
+	      ((*feeIter).EquivCurrency().length() != 0))
+	    {
+	      resp += "RATE USED 1";
+	      
+	      resp += (*feeIter).Currency();
+	      
+	      resp += "=";
+	      
+	      std::stringstream rateStream;
+
+	      rateStream.setf(std::ios::fixed, std::ios::floatfield);
+	      rateStream.precision(12);
+
+	      rateStream << (*feeIter).ExchangeRate();
+	      
+	      resp += rateStream.str();
+	      resp += (*feeIter).EquivCurrency();
+	      resp += CSitaNativeResponse::nativeEndOfLine;
+	      
+	      return resp;
+	    }
+	}
+    }
+
+  return resp;
+}
+
+COptionalServiceItems& COptionalServiceItems::operator= (const COptionalServiceItems& si)
+{
+    FareOfferOnDisplay(si.FareOfferOnDisplay());
+    BaggageCollected(si.BaggageCollected());
+    ManualBaggageCollected(si.ManualBaggageCollected());
+    OsfCollected(si.OsfCollected());
+    TktCollected(si.TktCollected());
+    DisplayFeeApplication(si.DisplayFeeApplication());
+    DisplayNoteText(si.DisplayNoteText());
+    DisplayTableNumber(si.DisplayTableNumber());
+    DisplayConvertedInfo(si.DisplayConvertedInfo());
+    DisplayNoForZeroPC(si.DisplayNoForZeroPC());
+    AddAmountToBaggagePiece(si.AddAmountToBaggagePiece());
+    TicketingFormat(si.TicketingFormat());
+    FeeAmountTruncated(si.FeeAmountTruncated());
+    JourneyType(si.JourneyType());
+    osfItems = si.osfItems;
+    departureCities = si.departureCities;
+    arrivalCities = si.arrivalCities;
+    pricingSegments = si.pricingSegments;
+    pricingSolutions = si.pricingSolutions;
+
+    return *this;
+}
+
+
+void COptionalServiceItems::Display(COecLogger* logger)
+{
+    stringstream numItemsStr;
+    numItemsStr << Items()->size();
+
+    logger->debug("==== OSF Items (" + numItemsStr.str() + ") ====");
+
+    if (DisplayFeeApplication() == true)
+        logger->debug("Display Fee Application [TRUE]");
+    else
+        logger->debug("Display Fee Application [FALSE]");
+
+    if (DisplayNoteText() == true)
+        logger->debug("Display Note Text [TRUE]");
+    else
+        logger->debug("Display Note Text [FALSE]");
+
+    if (DisplayConvertedInfo() == true)
+        logger->debug("Display Converted Info [TRUE]");
+    else
+        logger->debug("Display Converted Info [FALSE]");
+
+    if (DisplayNoForZeroPC() == true)
+        logger->debug("Display No for Zero PC [TRUE]");
+    else
+        logger->debug("Display No for Zero PC [FALSE]");
+
+    if (AddAmountToBaggagePiece() == true)
+        logger->debug("Add amount to PC [TRUE]");
+    else
+        logger->debug("Add amount to PC [FALSE]");
+
+    if (TicketingFormat() == true)
+        logger->debug("Ticketing Format [TRUE]");
+    else
+        logger->debug("Ticketing Format [FALSE]");
+
+    logger->debug("Journey Type [" + COptionalServiceItems::JourneyTypeText(JourneyType()) + "]");
+
+    logger->debug("** Departure Cities **");
+    CityMap::iterator depCityIter;
+    for (depCityIter = DepartureCities()->begin();
+        depCityIter != DepartureCities()->end();
+        depCityIter++)
+    {
+        stringstream segNumStr;
+        segNumStr << (*depCityIter).first;
+        logger->debug("Segment [" + segNumStr.str() + "]  City Code [" + (*depCityIter).second + "]");
+    }
+
+    logger->debug("** Arrival Cities **");
+    CityMap::iterator arrCityIter;
+    for (arrCityIter = ArrivalCities()->begin();
+        arrCityIter != ArrivalCities()->end();
+        arrCityIter++)
+    {
+        stringstream segNumStr;
+        segNumStr << (*arrCityIter).first;
+        logger->debug("Segment [" + segNumStr.str() + "]  City Code [" + (*arrCityIter).second + "]");
+    }
+
+    if (NumberOfItems() > 0)
+    {
+        int itemNumber=0;
+        OsfItems::iterator itemIter;
+        for (itemIter = Items()->begin();
+            itemIter != Items()->end();
+            ++itemIter, ++itemNumber)
+        {
+            stringstream numStr;
+            numStr << itemNumber;
+
+            logger->debug("**** OSF Item [" + numStr.str() + "] ****");
+            (*itemIter).Display(logger);
+        }
+    }
+
+    PricingSolutions::iterator psIter;
+    int psIndex = 0;
+    for (psIter = Solutions()->begin();
+        psIter != Solutions()->end();
+        ++psIter, psIndex++)
+    {
+        stringstream numStr;
+        numStr << psIndex;
+
+        logger->debug("**** Pricing Solution [" + numStr.str() + "] ****");
+        (*psIter).Display(logger);
+    }
+}
